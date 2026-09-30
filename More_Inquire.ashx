@@ -93,6 +93,9 @@ public class More_Inquire : IHttpHandler
 
                 SELECT MAX(YEAR) as maxyear, MIN(YEAR) as minyear
                 FROM STATDATA_NEW172a;
+
+                SELECT MAX(YEAR) as maxyear, MIN(YEAR) as minyear
+                FROM STATDATA_NEW182a;
             ";
             command.CommandText = sqlStr;
 
@@ -156,6 +159,8 @@ public class More_Inquire : IHttpHandler
                 SELECT MAX(CAST(MONTH AS Int)) as maxmonth FROM STATDATA_NEW84 WHERE YEAR=@YEAR;
 
                 SELECT MAX(CAST(MONTH AS Int)) as maxmonth FROM STATDATA_NEW172a WHERE YEAR=@YEAR;
+
+                SELECT MAX(CAST(MONTH AS Int)) as maxmonth FROM STATDATA_NEW182a WHERE YEAR=@YEAR;
             ";
             command.CommandText = sqlStr;
             SqlParameter[] p = {
@@ -508,6 +513,8 @@ public class More_Inquire : IHttpHandler
         public List<sortitem> IND7_SORT { get; set; }
         public List<listitem> IND8 { get; set; }
         public List<sortitem> IND8_SORT { get; set; }
+        public List<listitem> IND12 { get; set; }
+        public List<sortitem> IND12_SORT { get; set; }
         public List<listitem> OCC5 { get; set; }
         public List<sortitem> OCC5_SORT { get; set; }
         public List<listitem> OCC6 { get; set; }
@@ -526,8 +533,8 @@ public class More_Inquire : IHttpHandler
 
         bool hasbase = false, hasage = false, hasedtion = false, hasind6 = false, hasind7 = false;
         string hasbaseS = "", hasageS = "", hasedtionS = "", hasind6S = "", hasind7S = "";
-        bool hasind8 = false, hasocc5 = false, hasocc6 = false, hascow = false, hasron = false, hasrou = false;
-        string hasind8S = "", hasocc5S = "", hasocc6S = "", hascowS = "", hasronS = "", hasrouS = "";
+        bool hasind8 = false, hasind12 = false, hasocc5 = false, hasocc6 = false, hascow = false, hasron = false, hasrou = false;
+        string hasind8S = "", hasind12S = "", hasocc5S = "", hasocc6S = "", hascowS = "", hasronS = "", hasrouS = "";
         for (int i = 0; i < classes.Length; i++)
         {
             if (classes[i] == "總計" || classes[i] == "失業率" || classes[i] == "勞動力參與率")
@@ -559,6 +566,11 @@ public class More_Inquire : IHttpHandler
             {
                 hasind8 = true;
                 hasind8S = classes[i];
+            }
+            if (classes[i] == "行業_12")
+            {
+                hasind12 = true;
+                hasind12S = classes[i];
             }
             if (classes[i] == "職業_5")
             {
@@ -634,6 +646,14 @@ public class More_Inquire : IHttpHandler
             CompileLayOutData(context, ind8tables, data, "行業", "8-10");
             rd.IND8 = data;
             rd.IND8_SORT = GetSortItems("行業", "8-10");
+        }
+        if (hasind12)
+        {
+            List<listitem> data = new List<listitem>();
+            List<DataTable> ind12tables = GetIndTables(context, "行業", "8-10", "NEW182A");
+            CompileLayOutData(context, ind12tables, data, "行業", "8-10");
+            rd.IND12 = data;
+            rd.IND12_SORT = GetSortItems("行業", "8-10");
         }
         if (hasocc5)
         {
@@ -892,7 +912,7 @@ public class More_Inquire : IHttpHandler
         return dlist;
     }
 
-    public List<DataTable> GetIndTables(HttpContext context, string classes, string ver)
+    public List<DataTable> GetIndTables(HttpContext context, string classes, string ver, string table = "NEW172A")
     {
         string xstring = context.Request["sex"] as string;
         string[] sex = xstring.Split(',');
@@ -900,7 +920,6 @@ public class More_Inquire : IHttpHandler
         if (sex[0] == "T")
             sex = new string[] { "M", "F" };
 
-        string table = "NEW172A";
         string source = ind8code;
         if (ver == "6")
         {
@@ -1260,12 +1279,22 @@ public class More_Inquire : IHttpHandler
             if (Convert.ToInt16(eyear) > e)
                 eyear = e.ToString();
         }
-        else
+        else if (table == "NEW182A")
         {
-            int s = (1911 + Convert.ToInt16(90) - 1);
+            int s = (1911 + Convert.ToInt16(105) - 1);
 
             if (Convert.ToInt16(syear) < s)
                 syear = s.ToString();
+        }
+        else
+        {
+            int s = (1911 + Convert.ToInt16(90) - 1);
+            int e = (1911 + Convert.ToInt16(115));
+
+            if (Convert.ToInt16(syear) < s)
+                syear = s.ToString();
+            if (Convert.ToInt16(eyear) > e)
+                eyear = e.ToString();
         }
 
         icsyear = syear;
@@ -7386,6 +7415,8 @@ public class More_Inquire : IHttpHandler
                 return "Industry_7";
             case "行業_8":
                 return "Industry_8";
+            case "行業_12":
+                return "Industry_12";
             case "職業_5":
                 return "Occupation_5";
             case "職業_6":
