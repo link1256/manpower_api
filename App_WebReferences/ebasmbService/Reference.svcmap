@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ReferenceGroup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" ID="d8017cc8-5efb-4d6e-ab49-7fcef63ca8c6" xmlns="urn:schemas-microsoft-com:xml-wcfservicemap">
+  <ClientOptions>
+    <GenerateAsynchronousMethods>false</GenerateAsynchronousMethods>
+    <EnableDataBinding>true</EnableDataBinding>
+    <ExcludedTypes />
+    <ImportXmlTypes>false</ImportXmlTypes>
+    <GenerateInternalTypes>false</GenerateInternalTypes>
+    <GenerateMessageContracts>false</GenerateMessageContracts>
+    <NamespaceMappings />
+    <CollectionMappings />
+    <GenerateSerializableTypes>true</GenerateSerializableTypes>
+    <Serializer>Auto</Serializer>
+    <UseSerializerForFaults>true</UseSerializerForFaults>
+    <ReferenceAllAssemblies>true</ReferenceAllAssemblies>
+    <ReferencedAssemblies />
+    <ReferencedDataContractTypes />
+    <ServiceContractMappings />
+  </ClientOptions>
+  <MetadataSources>
+    <MetadataSource Address="http://cas.ebas.gov.tw/ebas-cas/ws/ebas/member/ebasMemberService?WSDL" Protocol="http" SourceId="1" />
+  </MetadataSources>
+  <Metadata>
+    <MetadataFile FileName="EbasMemberService.wsdl" MetadataType="Wsdl" ID="ceec1213-26b3-42a4-a4e3-acdb8be9a273" SourceId="1" SourceUrl="http://cas.ebas.gov.tw/ebas-cas/ws/ebas/member/ebasMemberService?wsdl=EbasMemberService.wsdl" />
+    <MetadataFile FileName="EbasMemberServiceImplService.wsdl" MetadataType="Wsdl" ID="4207c4bc-484e-445e-b452-0eef3705e1d1" SourceId="1" SourceUrl="http://cas.ebas.gov.tw/ebas-cas/ws/ebas/member/ebasMemberService?WSDL" />
+  </Metadata>
+  <Extensions>
+    <ExtensionFile FileName="configuration91.svcinfo" Name="configuration91.svcinfo" />
+    <ExtensionFile FileName="configuration.svcinfo" Name="configuration.svcinfo" />
+  </Extensions>
+</ReferenceGroup>

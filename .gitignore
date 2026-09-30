@@ -1,0 +1,40 @@
+# Source-control metadata from the legacy repository
+.svn/
+
+# Visual Studio user and workspace files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build output and restored dependencies
+bin/
+obj/
+packages/
+PrecompiledWeb/
+_PublishedWebsites/
+
+# Runtime logs, exports, and uploaded content
+Log/
+ExportExcel/
+ExportYearReport/
+upload/
+uploadimage/
+layoutupload/
+
+# Local configuration contains database credentials and encryption keys
+/web.config
+
+# Analysis output
+.scannerwork/
+
+# Local archives and backups
+*.zip
+*.bak
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
