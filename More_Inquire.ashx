@@ -650,10 +650,10 @@ public class More_Inquire : IHttpHandler
         if (hasind12)
         {
             List<listitem> data = new List<listitem>();
-            List<DataTable> ind12tables = GetIndTables(context, "行業", "8-10", "NEW182A");
-            CompileLayOutData(context, ind12tables, data, "行業", "8-10");
+            List<DataTable> ind12tables = GetIndTables(context, "行業", "12", "NEW182A");
+            CompileLayOutData(context, ind12tables, data, "行業", "12");
             rd.IND12 = data;
-            rd.IND12_SORT = GetSortItems("行業", "8-10");
+            rd.IND12_SORT = GetSortItems("行業", "12");
         }
         if (hasocc5)
         {

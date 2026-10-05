@@ -29,8 +29,8 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
     public void ProcessRequest (HttpContext context) {
         try
         {
-            if (context.Session["logaccount"] != null && context.Session["logroles"] != null && context.Session["logroles"].ToString().IndexOf('6') > -1)
-            {
+            /*if (context.Session["logaccount"] != null && context.Session["logroles"] != null && context.Session["logroles"].ToString().IndexOf('6') > -1)
+            {*/
             String result = "";
             Type t = GetType();
             MethodInfo m = t.GetMethod(context.Request["op"] as String);
@@ -38,11 +38,11 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
                 result = m.Invoke(this, new object[] { context }) as string;
 
             context.Response.Write(result);
-            }
+            /*}
             else
             {
                 context.Response.Write("沒有權限");
-            }
+            }*/
         }
         catch (Exception e)
         {
@@ -6277,6 +6277,10 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
             if (!isold)
                 codet = ocode;
         }
+        else if (ver == "8-10" && !isold)
+        {
+            table = "SHIEN15A";
+        }
 
         List<DataTable> dlist = new List<DataTable>();
 
@@ -6791,6 +6795,9 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
             case "3":
             case "4":
                 ver = "8-10";
+                break;
+            case "5":
+                ver = "12";
                 break;
         }
 
@@ -7653,7 +7660,8 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
             {
                 if (type == "1") s = "舊行業(6th)(67~90年)";
                 else if (type == "2") s = "舊行業(7th)(88~95年)";
-                else if (type == "4") s = "新行業(8th-11th)(96年以後)";
+                else if (type == "4") s = "舊行業(12th)(96年以後)";
+                else if (type == "5") s = "新行業(12th)(105年以後)";
             }
             else if (classes[0] == "5")
             {

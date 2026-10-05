@@ -32,8 +32,8 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
     public void ProcessRequest(HttpContext context) {
         try
         {
-            if (context.Session["logaccount"] != null && context.Session["logroles"] != null && context.Session["logroles"].ToString().IndexOf('6') > -1)
-            {
+            /*if (context.Session["logaccount"] != null && context.Session["logroles"] != null && context.Session["logroles"].ToString().IndexOf('6') > -1)
+            {*/
                 String result = "";
                 Type t = GetType();
                 MethodInfo m = t.GetMethod(context.Request["op"] as String);
@@ -41,11 +41,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                     result = m.Invoke(this, new object[] { context }) as string;
 
                 context.Response.Write(result);
-            }
+            /* }
             else
             {
                 context.Response.Write("沒有權限");
-            }
+            } */
         }
         catch (Exception e)
         {
@@ -66,6 +66,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             ind6 = GetSortItems("行業", "6"),
             ind7 = GetSortItems("行業", "7"),
             ind8 = GetSortItems("行業", "8-10"),
+            ind12 = GetSortItems("行業", "12"),
             occ5 = GetSortItems("職業", "5"),
             occ6 = GetSortItems("職業", "6"),
             MNYear = target
@@ -6266,7 +6267,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
         }
     }
 
-    public string getSubLayOutString(string code, string dcs)
+    public string getSubLayOutString(string code, string dcs, string ver)
     {
         string d = "";
         String sqlStr = "";
@@ -6275,7 +6276,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
         {
             SqlCommand command = new SqlCommand("", connection);
             sqlStr = @"SELECT * FROM CODE  
-                        WHERE CAT = @classes AND CODE = @code AND INTERNAL = 1 ";
+                        WHERE CAT = @classes AND CODE = @code AND VER = @ver AND INTERNAL = 1 ";
 
             command.CommandText = sqlStr;
 
@@ -6283,7 +6284,8 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             {
                 SqlParameter[] p = {
                     new SqlParameter("@classes", dcs),
-                    new SqlParameter("@code", code)
+                    new SqlParameter("@code", code),
+                    new SqlParameter("@ver", ver)
                 };
                 command.Parameters.Clear();
                 command.Parameters.AddRange(p);
@@ -6324,13 +6326,19 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
         string class2 = context.Request["classes2"] as string;
         string class3 = context.Request["classes3"] as string;
 
+        string subver = "0";
+        if (dcs2 == "行業")
+            subver = GetLayOutIndVer(context);
+        else if (dcs2 == "職業")
+            subver = GetLayOutOccVer(context);
+
         bool hasp = output.IndexOf("P") != -1 ? true : false;
         bool hast = output.IndexOf("T") != -1 ? true : false;
         bool hass = output.IndexOf("S") != -1 ? true : false;
 
         for (int i = 0; i < asubtype2.Length; i++)
         {
-            string sf = getSubLayOutString(asubtype2[i], dcs2);
+            string sf = getSubLayOutString(asubtype2[i], dcs2, subver);
             roctype.Add(sf);
         }
 
@@ -8090,7 +8098,8 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
         if (xstring.IndexOf("T") != -1)
             sex = new string[] { "M", "F" };
 
-        string table = "NEW182A";
+        string subtype = context.Request["subtype"] as string;
+        string table = subtype == "5" ? "NEW182A" : "NEW172A";
         string source = ind8code;
 
         if (ver == "6")
@@ -8311,6 +8320,14 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                             table = "NEW84";
                             tcode = ind7code;
                         }
+                        else if (subtype == "3" || subtype == "4")
+                        {
+                            table = "NEW172A";
+                        }
+                        else if (subtype == "5")
+                        {
+                            table = "NEW182A";
+                        }
 
                         code = tcode + "T" + layouts[k] + "00X" + codes[f] + "0000000000";
                         lcode = layouts[k] + "00X" + codes[f] + "0000000000";
@@ -8318,10 +8335,18 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                     else if (classes2 == "2")
                     {
                         string tcode = occ6code;
-                        if (subtype != "4")
+                        if (subtype == "1" || subtype == "2" || subtype == "3")
                         {
                             table = "NEW103";
                             tcode = occ5code;
+                        }
+                        else if (subtype == "4")
+                        {
+                            table = "NEW172A";
+                        }
+                        else if (subtype == "5")
+                        {
+                            table = "NEW182A";
                         }
                         code = tcode + "T" + layouts[k] + "00X000" + codes[f] + "00000000";
                         lcode = layouts[k] + "00X000" + codes[f] + "00000000";
@@ -8381,7 +8406,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             DataTable sctable = GetZoneCode(dcs2, subcode[i], sver);
             List<string> codes = new List<string>();
 
-            if (sctable.Rows[0]["CAL_ITEM"].ToString() != "NULL")
+            if (sctable.Rows.Count > 0 && sctable.Rows[0]["CAL_ITEM"].ToString() != "NULL")
             {
                 string[] cal = sctable.Rows[0]["CAL_ITEM"].ToString().Split(',');
                 for (int t = 0; t < cal.Length; t++)
@@ -8414,6 +8439,14 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                             table = "NEW84";
                             tcode = ind7code;
                         }
+                        else if (subtype == "3" || subtype == "4")
+                        {
+                            table = "NEW172A";
+                        }
+                        else if (subtype == "5")
+                        {
+                            table = "NEW182A";
+                        }
 
                         code = tcode + "T" + "00" + layouts[k] + "X" + codes[f] + "0000000000";
                         lcode = "00" + layouts[k] + "X" + codes[f] + "0000000000";
@@ -8421,10 +8454,18 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                     else if (classes2 == "2")
                     {
                         string tcode = occ6code;
-                        if (subtype != "4")
+                        if (subtype == "1" || subtype == "2" || subtype == "3")
                         {
                             table = "NEW103";
                             tcode = occ5code;
+                        }
+                        else if (subtype == "4")
+                        {
+                            table = "NEW172A";
+                        }
+                        else if (subtype == "5")
+                        {
+                            table = "NEW182A";
                         }
                         code = tcode + "T" + "00" + layouts[k] + "X000" + codes[f] + "00000000";
                         lcode = "00" + layouts[k] + "X000" + codes[f] + "00000000";
@@ -9230,6 +9271,9 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             case "4":
                 ver = "8-10";
                 break;
+            case "5":
+                ver = "12";
+                break;
         }
 
         return ver;
@@ -9290,6 +9334,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                 ver = "5";
                 break;
             case "4":
+            case "5":
                 ver = "6";
                 break;
         }
@@ -10119,7 +10164,9 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             else if (subtype == 3)
                 ts += "-" + "就業者(一)新行業(8th)舊職業(5th)(90~99年)";
             else if (subtype == 4)
-                ts += "-" + "就業者(一)新行業(8th-11th)(96年以後)";
+                ts += "-" + "就業者(一)舊行業(8th-11th)(96年以後)";
+            else if (subtype == 5)
+                ts += "-" + "就業者(一)新行業(12th)(105年以後)";
         }
         else if (classes == 8)
         {
@@ -10128,9 +10175,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             else if (subtype == 2)
                 ts += "-" + "就業者(二)舊行業(7th)舊職業(5th)(88~95年)";
             else if (subtype == 3)
-                ts += "-" + "就業者(二)新行業(8th)舊職業(5th)(96~99年)";
+                ts += "-" + "就業者(二)舊行業(8th)舊職業(5th)(96~99年)";
             else if (subtype == 4)
-                ts += "-" + "就業者(二)新行業(8th-11th)新職業(6th)(100年以後)";
+                ts += "-" + "就業者(二)舊行業(8th-11th)新職業(6th)(100年以後)";
+            else if (subtype == 5)
+                ts += "-" + "就業者(二)新行業(12th)新職業(6th)(105年以後)";
 
             ts += "-" + getrocclasses2(classes2);
             ts += asubtype2.Length > 1 ? "-複選" : "-單選";
