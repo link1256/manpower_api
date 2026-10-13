@@ -20,7 +20,7 @@ public class MonthlyReport : IHttpHandler, IRequiresSessionState
 {
     String sqlConnstr = System.Configuration.ConfigurationManager.ConnectionStrings["CensusGISADONet"].ConnectionString;
     ComputeMod ComputeMod = new ComputeMod();
-    String tablestring = "SHIEN15A";
+    String tablestring = "SHIEN25A";
     String tablecode = "06";
     String[] citys = {
         "臺灣地區", "北部區域", "新北市", "臺北市", "桃園市", "基隆市", "新竹市", "宜蘭縣", "新竹縣", "中部區域",
@@ -81,7 +81,7 @@ public class MonthlyReport : IHttpHandler, IRequiresSessionState
             SqlCommand command = new SqlCommand("", connection);
             sqlStr = @"
                 SELECT MAX(YEAR) as maxyear, MIN(YEAR) as minyear
-                FROM STATDATA_SHIEN15A 
+                FROM STATDATA_SHIEN25A
             ";
             command.CommandText = sqlStr;
 
