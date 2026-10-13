@@ -5214,6 +5214,43 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
         }
     }
 
+    private int AlignIndustryPeriods(List<DataTable> male, List<DataTable> female)
+    {
+        List<DataTable> tables = male.Concat(female).ToList();
+        var periods = tables.SelectMany(table => table.AsEnumerable())
+            .Select(row => new { Year = row["YEAR"].ToString(), Month = row["MONTH"].ToString() })
+            .GroupBy(period => period.Year + "|" + period.Month)
+            .Select(group => group.First())
+            .OrderBy(period => Convert.ToInt32(period.Year))
+            .ToList();
+
+        // Preserve period labels/order for monthly, annual, half-year and quarterly queries.
+        foreach (DataTable table in tables)
+        {
+            var existing = table.AsEnumerable().ToDictionary(
+                row => row["YEAR"].ToString() + "|" + row["MONTH"].ToString(),
+                row => row.ItemArray);
+            object[] template = table.Rows[0].ItemArray;
+            table.Clear();
+            foreach (var period in periods)
+            {
+                object[] values;
+                DataRow row = table.NewRow();
+                if (existing.TryGetValue(period.Year + "|" + period.Month, out values))
+                    row.ItemArray = values;
+                else
+                {
+                    row.ItemArray = (object[])template.Clone();
+                    row["YEAR"] = period.Year;
+                    row["MONTH"] = period.Month;
+                    row["value"] = 0;
+                }
+                table.Rows.Add(row);
+            }
+        }
+        return periods.Count;
+    }
+
     //統計值-LayOut
     public void SetLayOutStatistics1(HttpContext context, DataTable tar, string iclasses, List<listitem> listitem, string[] layouts, DataTable code, string output, string dcs, Dictionary<string, decimal> data2)
     {
@@ -5231,9 +5268,9 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
 
         string subtype = context.Request["subtype"] as string;
 
-        List<double> totalvalue = new List<double>();
-        List<double> totalvalueM = new List<double>();
-        List<double> totalvalueF = new List<double>();
+        Dictionary<string, double> totalvalue = new Dictionary<string, double>();
+        Dictionary<string, double> totalvalueM = new Dictionary<string, double>();
+        Dictionary<string, double> totalvalueF = new Dictionary<string, double>();
         for (int i = 0; i < layouts.Length; i++)
         {
             DataRow[] cd = code.Select("CODE = '" + layouts[i] + "'");
@@ -5272,6 +5309,8 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                     tablecount = df.Length;
                 }
             }
+            if (dcs == "行業" && GetLayOutIndVer(context) == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;
@@ -5576,11 +5615,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                         if (des == "總計")
                         {
                             lm.v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)value, 2);
-                            totalvalue.Add(value);
+                            totalvalue[y + "|" + m] = value;
                         }
                         else
                         {
-                            double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)totalvalue[j], 2);
+                            double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)totalvalue[y + "|" + m], 2);
                             lm.v = v;
                         }
 
@@ -5898,11 +5937,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                             if (des == "總計")
                             {
                                 lm.v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)value, 2);
-                                totalvalueM.Add(value);
+                                totalvalueM[y + "|" + m] = value;
                             }
                             else
                             {
-                                double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)totalvalueM[j], 2);
+                                double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)totalvalueM[y + "|" + m], 2);
                                 lm.v = v;
                             }
 
@@ -6227,11 +6266,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                             if (des == "總計")
                             {
                                 lm.v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)value, 2);
-                                totalvalueF.Add(value);
+                                totalvalueF[y + "|" + m] = value;
                             }
                             else
                             {
-                                double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)totalvalueF[j], 2);
+                                double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)totalvalueF[y + "|" + m], 2);
                                 lm.v = v;
                             }
 
@@ -6344,7 +6383,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
 
         rdata.subclasses = roctype;
 
-        List<List<double>> ttary = new List<List<double>>();
+        List<Dictionary<string, double>> ttary = new List<Dictionary<string, double>>();
         for (int i = 0; i < layouts.Length; i++)
         {
             for (int p = 0; p < lcs.Count; p++)
@@ -6356,7 +6395,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
 
                 if (des == "總計" && hass == true)
                 {
-                    List<double> totalvalue = new List<double>();
+                    Dictionary<string, double> totalvalue = new Dictionary<string, double>();
                     ttary.Add(totalvalue);
                 }
 
@@ -6368,7 +6407,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                 string[] cals = cal.Split(',');
                 List<string> calcodes = setMultiCodes2(dcs, cals, lcs[p]);
 
-                List<DataRow[]> dsm = new List<DataRow[]>();
+                List<DataTable> dsm = new List<DataTable>();
 
                 int tablecount = 0;
                 for (int j = 0; j < calcodes.Count; j++)
@@ -6376,20 +6415,23 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                     DataRow[] dm = tar[p].Select("STATID like '%T" + calcodes[j] + "%'");
                     if (dm.Length > 0)
                     {
-                        dsm.Add(dm);
+                        dsm.Add(dm.CopyToDataTable());
                         tablecount = dm.Length;
                     }
                 }
 
+                if ((cclasses == "8" || cclasses == "9") && GetLayOutIndVer(context) == "12" && calcodes.Count > 1)
+                    tablecount = AlignIndustryPeriods(dsm, new List<DataTable>());
+
                 for (int j = 0; j < tablecount; j++)
                 {
-                    string y = dsm[0][j]["YEAR"].ToString();
-                    string m = dsm[0][j]["MONTH"].ToString();
+                    string y = dsm[0].Rows[j]["YEAR"].ToString();
+                    string m = dsm[0].Rows[j]["MONTH"].ToString();
                     string d = "";
                     double value = 0;
                     for (int k = 0; k < dsm.Count; k++)
                     {
-                        double dm = Convert.ToDouble(dsm[k][j]["value"].ToString());
+                        double dm = Convert.ToDouble(dsm[k].Rows[j]["value"].ToString());
                         if (Double.IsNaN(dm))
                             dm = 0;
 
@@ -6557,11 +6599,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                         if (des == "總計")
                         {
                             lm.v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)value, 2);
-                            ttary[p].Add(value);
+                            ttary[p][y + "|" + m] = value;
                         }
                         else
                         {
-                            double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)ttary[p][j], 2);
+                            double v = (double)ComputeMod.ComputeAvgPercent((decimal)value, (decimal)ttary[p][y + "|" + m], 2);
                             lm.v = v;
                         }
 
@@ -8500,7 +8542,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
 
     public cstable GetIndTables2(HttpContext context, string classes, string ver, string classes2, string[] subcode, string subtype)
     {
-        string table = "NEW182A";
+        string table = ver == "12" ? "NEW182A" : "NEW172A";
         string source = ind8code;
         string iver = GetLayOutIndVer(context);
         string sc = "04";
@@ -8516,7 +8558,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
             source = ind7code;
             sc = "02";
         }
-        else if (ver == "8-10" && iver == "5")
+        else if (ver == "8-10" && GetLayOutOccVer(context) == "5")
         {
             table = "NEW103";
             source = "OCC03";
@@ -8580,7 +8622,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
 
     public cstable GetOCCTables2(HttpContext context, string classes, string ver, string classes2, string[] subcode, string subtype)
     {
-        string table = "NEW182A";
+        string table = GetLayOutIndVer(context) == "12" ? "NEW182A" : "NEW172A";
         string source = occ6code;
         string iver = GetLayOutIndVer(context);
         string sc = "04";
@@ -9272,6 +9314,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                 ver = "8-10";
                 break;
             case "5":
+            case "6":
                 ver = "12";
                 break;
         }
@@ -9335,6 +9378,7 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                 break;
             case "4":
             case "5":
+            case "6":
                 ver = "6";
                 break;
         }
@@ -10204,9 +10248,11 @@ public class Taiwan_Inquire : IHttpHandler, IRequiresSessionState {
                 else if (subtype == 2)
                     ts += "-" + "失業者(二)舊行業(7th)舊職業(5th)(88~95年)";
                 else if (subtype == 3)
-                    ts += "-" + "失業者(二)新行業(8th)舊職業(5th)(96~99年)";
+                    ts += "-" + "失業者(二)舊行業(8th)舊職業(5th)(96~99年)";
                 else if (subtype == 4)
-                    ts += "-" + "失業者(二)新行業(8th-11th)新職業(6th)(100年以後)";
+                    ts += "-" + "失業者(二)舊行業(8th-11th)新職業(6th)(100年以後)";
+                else if (subtype == 6)
+                    ts += "-" + "失業者(二)新行業(12th)新職業(6th)(105年以後)";
 
                 ts += "-" + getrocclasses2(classes2);
                 ts += asubtype2.Length > 1 ? "-複選" : "-單選";

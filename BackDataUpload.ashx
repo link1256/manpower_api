@@ -691,6 +691,8 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
         enddate = HttpUtility.HtmlEncode(enddate);
 
         string st = "";
+        if (datetype != "1" && datetype != "2")
+            throw new ArgumentException("Invalid import date mode.");
         if (table == "DB2")
             st = "DB2";
         else if (table == "DB4")
@@ -762,6 +764,10 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
             objs.Add("CountyFilter", strCountyFilter);
             objs.Add("DisplayIgnoreMessage", bDisplayIgnoreMessage);
             objs.Add("BatchLimit", strBatchLimit);
+            objs.Add("Guid", context.Request.Form["GUUID"]);
+            objs.Add("Type", type);
+            objs.Add("Table", table);
+            objs.Add("DateType", datetype);
 
             Thread workerThread = new Thread(new ParameterizedThreadStart(DoManPowerProcess));
             workerThread.Start(objs);
@@ -774,14 +780,15 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
 
     private void DoManPowerProcess(object parameters)
     {
+        Dictionary<String, Object> objs = parameters as Dictionary<String, Object>;
         try
         {
-            string datetype = glcontext.Request.Form["datetype"] as string; //1: 全部 2: 時間
-            string type = glcontext.Request.Form["type"] as string;
-            string guid = glcontext.Request.Form["GUUID"] as string;
-            string tb = glcontext.Request.Form["table"] as string;
-            string startdate = glcontext.Request.Form["startdate"] as string;
-            string enddate = glcontext.Request.Form["enddate"] as string;
+            string datetype = objs["DateType"] as string;
+            string type = objs["Type"] as string;
+            string guid = objs["Guid"] as string;
+            string tb = objs["Table"] as string;
+            string startdate = objs["StartYearMonth"] as string;
+            string enddate = objs["EndYearMonth"] as string;
 
             guid = HttpUtility.HtmlEncode(guid);
             type = HttpUtility.HtmlEncode(type);
@@ -789,8 +796,6 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
             datetype = HttpUtility.HtmlEncode(datetype);
             startdate = HttpUtility.HtmlEncode(startdate);
             enddate = HttpUtility.HtmlEncode(enddate);
-
-            Dictionary<String, Object> objs = parameters as Dictionary<String, Object>;
 
             if (objs != null)
             {
@@ -825,8 +830,6 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
                     WriteLog("inProcess");
                     // 設定GUUID
                     process.SetUniqueID(guid);
-                    // 設定 Callback 的功能.
-                    process.Finished += new ManPowerProcess.FinishedEventHandler(UpdateFinishedFromCallback);
                     // 設定批次寫入的筆數
                     process.SetBatchLimit(nBatchLimit);
                     // 設定年月必須包含 "/", 可無值, 例 "1980/"
@@ -835,8 +838,9 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
                     process.SetEndYearMonth(strEndYearMonth);
                     process.SetCountyFilter(strCountyFilter);
                     process.DisplayIgnoreMessage = bDisplayIgnore;
-                    process.SetMetadataTable(strTableMetadata, strSourceMetadata);
-                    process.SetDataValueTable(strTableDataValue);
+                    if (!process.SetMetadataTable(strTableMetadata, strSourceMetadata)
+                        || !process.SetDataValueTable(strTableDataValue))
+                        throw new InvalidOperationException("Unable to load import mappings or destination table.");
                     Boolean bLayoutLoaded = false;
                     if (String.Compare("Layout", strDataSeparator, true) == 0)
                     {
@@ -852,8 +856,8 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
                         WriteLog("inLayoutLoaded");
                         // 預載資料, 並取得所有資料筆的年月 ()
                         List<String> lstYM = process.LoadDataFile(strDataFile, "yyyy/MM");
-                        UpdateToDB(lstYM, false, strTableDataValue);
-                        DataLogInsert(lstYM, false);
+                        if (lstYM == null || lstYM.Count == 0)
+                            throw new InvalidOperationException("The uploaded file contains no valid periods.");
 
                         int isy = 0, iey = 0, ism = 0, iem = 0;
                         if (glcontext != null)
@@ -886,6 +890,18 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
                             ism = Convert.ToInt32(smonth);
                             iem = Convert.ToInt32(emonth);
 
+                            DateTime replaceStart = new DateTime(isy, ism, 1);
+                            DateTime replaceEnd = new DateTime(iey, iem, 1);
+                            if (replaceStart > replaceEnd)
+                                throw new ArgumentException("The start period must not exceed the end period.");
+                            WriteLog("goImport");
+                            Int32 nImported = process.ImportData(replaceStart, replaceEnd);
+                            if (nImported <= 0)
+                                throw new InvalidOperationException("No records were imported.");
+
+                            // Record history only after the replacement transaction commits.
+                            DataLogInsert(lstYM, false);
+
                             string t = "臺灣地區";
                             if (type == "2")
                                 t = "縣市";
@@ -895,104 +911,22 @@ public class BackDataUpload : IHttpHandler, IRequiresSessionState
                             uploadlog(glcontext, "資料維護", "更新(" + t + ") 資料 (" + tb + "),(" + syear + "年" + smonth + "月 - " + eyear + "年" + emonth + "月)");
                         }
 
-                        // 匯入資料
-                        WriteLog("goImport");
-                        Int32 nImported = process.ImportData();
-                        if (nImported <= 0)
-                        {
-                            //UpdateStatus(String.Format("有狀況, 未能匯入任何資料."), false);
-                        }
+                        UpdateFinishedFromCallback(new FinishItem() { UniqueID = guid, UserBreak = 0 });
                     }
+                    else
+                        throw new InvalidOperationException("Unable to load import layout.");
                 }
                 elapsed.Stop();
             }
         }
         catch (Exception ex)
         {
+            if (objs != null && objs.ContainsKey("Guid"))
+                glcontext.Application[objs["Guid"].ToString()] = "ERROR";
             WriteLog(ex.ToString());
         }
     }
 
-    private void UpdateToDB(List<String> lstYM, bool ismonthly, string table)
-    {
-        string datetype = glcontext.Request.Form["datetype"] as string; //1: 全部 2: 時間
-        string startdate = glcontext.Request.Form["startdate"] as string;
-        string enddate = glcontext.Request.Form["enddate"] as string;
-
-        datetype = HttpUtility.HtmlEncode(datetype);
-        startdate = HttpUtility.HtmlEncode(startdate);
-        enddate = HttpUtility.HtmlEncode(enddate);
-
-        string syear = "";
-        string eyear = "";
-        string smonth = "";
-        string emonth = "";
-        if (datetype == "1" && ismonthly != true)
-        {
-            syear = lstYM[0][0].ToString() + lstYM[0][1].ToString() + lstYM[0][2].ToString() + lstYM[0][3].ToString();
-            eyear = lstYM[lstYM.Count - 1][0].ToString() + lstYM[lstYM.Count - 1][1].ToString() + lstYM[lstYM.Count - 1][2].ToString() + lstYM[lstYM.Count - 1][3].ToString();
-            smonth = lstYM[0][4].ToString() + lstYM[0][5].ToString();
-            emonth = lstYM[lstYM.Count - 1][4].ToString() + lstYM[lstYM.Count - 1][5].ToString();
-        }
-        else if (datetype == "2" || ismonthly == true)
-        {
-            string[] asy = startdate.Split('/');
-            string[] esy = enddate.Split('/');
-            syear = asy[0];
-            eyear = esy[0];
-            smonth = asy[1];
-            emonth = esy[1];
-        }
-
-        int sy = Convert.ToInt16(syear);
-        int ey = Convert.ToInt16(eyear);
-        int sm = Convert.ToInt16(smonth);
-        int em = Convert.ToInt16(emonth);
-
-        string sqlStr = "";
-        using (SqlConnection connection = new SqlConnection(sqlConnstr))
-        {
-            SqlCommand command = new SqlCommand("", connection);
-            if (sy == ey && sm == em)
-            {
-                sqlStr = @" DELETE FROM " + table +
-                        @" WHERE (YEAR = @SYEAR AND MONTH = @SMONTH) ";
-            }
-            else
-            {
-                sqlStr = @" DELETE FROM " + table +
-                    @" WHERE (YEAR > @SYEAR AND YEAR < @EYEAR) OR (YEAR = @SYEAR AND MONTH >= @SMONTH) OR (YEAR = @EYEAR AND MONTH <= @EMONTH) ";
-            }
-
-            command.CommandText = sqlStr;
-            command.CommandTimeout = 10000;
-            try
-            {
-                SqlParameter[] p = {
-                    new SqlParameter("@SYEAR", sy),
-                    new SqlParameter("@EYEAR", ey),
-                    new SqlParameter("@SMONTH", sm),
-                    new SqlParameter("@EMONTH", em)
-                };
-                command.Parameters.Clear();
-                command.Parameters.AddRange(p);
-
-                if (connection.State == ConnectionState.Closed)
-                {
-                    connection.Open();
-                    command.ExecuteNonQuery();
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteLog(ex.ToString());
-            }
-            finally
-            {
-                connection.Close();
-            }
-        };
-    }
 
     private void UpdateToDB2(List<String> lstYM, bool ismonthly, string table)
     {

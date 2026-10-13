@@ -3698,6 +3698,8 @@ public class More_Inquire : IHttpHandler
                     tablecount = df.Length;
                 }
             }
+            if (classes == "行業" && ver == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;
@@ -4019,6 +4021,8 @@ public class More_Inquire : IHttpHandler
                     tablecount = df.Length;
                 }
             }
+            if (classes == "行業" && ver == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;
@@ -4520,6 +4524,8 @@ public class More_Inquire : IHttpHandler
                     tablecount = df.Length;
                 }
             }
+            if (classes == "行業" && ver == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;
@@ -4795,251 +4801,131 @@ public class More_Inquire : IHttpHandler
             }
         }
 
-        List<decimal> totalvalue = new List<decimal>();
-        List<decimal> totalvalueM = new List<decimal>();
-        List<decimal> totalvalueF = new List<decimal>();
-        for (int i = 0; i < layouts.Length; i++)
+        if (layouts.Length == 0 || String.IsNullOrEmpty(layouts[0]))
+            return;
+
+        DataRow totalCode = code.Select("CODE = '" + layouts[0] + "'").FirstOrDefault();
+        if (totalCode == null)
+            return;
+        Dictionary<string, decimal?[]> totals = GetStructureValues(tar, classes, totalCode);
+
+        foreach (string layout in layouts)
         {
-            DataRow[] cd = code.Select("CODE = '" + layouts[i] + "'");
-            string cal = cd[0]["CAL_ITEM"].ToString();
-            string des = cd[0]["DES_ZH"].ToString();
-            string dese = cd[0]["DES_EN"].ToString();
-            string lvl = cd[0]["LVL"].ToString();
-
-            if (cal == "NULL")
+            DataRow definition = code.Select("CODE = '" + layout + "'").FirstOrDefault();
+            if (definition == null)
+                continue;
+            string des = definition["DES_ZH"].ToString();
+            Dictionary<string, decimal?[]> values = GetStructureValues(tar, classes, definition);
+            foreach (string period in values.Keys.OrderBy(p => Convert.ToInt32(p.Split('|')[0]))
+                .ThenBy(p => p.Split('|')[1].Length).ThenBy(p => p.Split('|')[1]))
             {
-                cal = layouts[i];
-            }
+                string[] parts = period.Split('|');
+                string y = parts[0], m = parts[1];
+                if (Convert.ToInt32(y) <= Convert.ToInt32(syear)
+                    || (eyear != "" && Convert.ToInt32(y) > Convert.ToInt32(eyear)))
+                    continue;
+                decimal?[] denominator;
+                if (!totals.TryGetValue(period, out denominator))
+                    continue;
 
-            string[] cals = cal.Split(',');
-            List<string> calcodes = setMultiCodes(classes, cals);
-            List<DataTable> dsm = new List<DataTable>();
-            List<DataTable> dsf = new List<DataTable>();
-
-            int tablecount = 0;
-            for (int j = 0; j < calcodes.Count; j++)
-            {
-                DataRow[] dm = tar.Select("STATID like '%M" + calcodes[j] + "%'");
-                if (dm.Length > 0)
+                string dy = (Convert.ToInt32(y) - 1911).ToString();
+                string d = m == "-" ? dy + "年" : dy + "年" + m + (infotype != "3" ? "月" : "");
+                string de = m == "-" ? y : DictionaryMonth_Eng(m) + " " + y;
+                foreach (string sex in new string[] { "T", "M", "F" })
                 {
-                    DataTable dt = dm.CopyToDataTable();
-                    dsm.Add(dt);
-                    tablecount = dm.Length;
-                }
-
-                DataRow[] df = tar.Select("STATID like '%F" + calcodes[j] + "%'");
-                if (df.Length > 0)
-                {
-                    DataTable dt = df.CopyToDataTable();
-                    dsf.Add(dt);
-                    tablecount = df.Length;
-                }
-            }
-            bool hasT = false;
-            if (ssex.IndexOf("T") != -1)
-                hasT = true;
-
-            if (hasT)
-            {
-                for (int j = 0; j < tablecount; j++)
-                {
-                    string y = dsm[0].Rows[j]["YEAR"].ToString();
-                    string m = dsm[0].Rows[j]["MONTH"].ToString();
-                    string d = "";
-                    string de = "";
-                    if (Convert.ToInt32(y) <= Convert.ToInt32(syear))
-                    {
-                        totalvalue.Add(0);
+                    if (!sexs.Contains(sex))
                         continue;
-                    }
-                    if (eyear != "" && Convert.ToInt16(y) > Convert.ToInt16(eyear))
-                        break;
+                    decimal? numerator = sex == "T" ? values[period][0] + values[period][1]
+                        : values[period][sex == "M" ? 0 : 1];
+                    decimal? total = sex == "T" ? denominator[0] + denominator[1]
+                        : denominator[sex == "M" ? 0 : 1];
+                    if (!numerator.HasValue || !total.HasValue)
+                        continue;
 
-                    listitem lm = new listitem();
-
-                    decimal value = 0;
-                    for (int k = 0; k < dsm.Count; k++)
+                    listitem item = new listitem()
                     {
-                        value += Convert.ToDecimal(dsm[k].Rows[j]["STAT_VAL"].ToString());
-                        value += Convert.ToDecimal(dsf[k].Rows[j]["STAT_VAL"].ToString());
-                    }
-                    lm.c = des;
-                    lm.c_e = dese;
-                    lm.l = lvl;
-
-                    string dy = (Convert.ToInt16(y) - 1911).ToString();
-                    if (m != "-")
-                    {
-                        if (infotype != "3")
-                            d = dy + "年" + m + "月";
-                        else
-                            d = dy + "年" + m;
-
-                        de = DictionaryMonth_Eng(m) + " " + y;
-                    }
-                    else
-                    {
-                        d = dy + "年";
-                        de = y;
-                    }
-
-                    lm.d = d;
-                    lm.d_e = de;
-                    lm.s = "總計";
-                    lm.s_e = "Total";
-                    lm.st = "結構比 (%)";
-                    lm.st_e = "% of Total";
-
-                    if (des == "總計")
-                    {
-                        lm.v = ComputeMod.ComputeAvgPercent(value, value, 2);
-
-                        totalvalue.Add(value);
-                    }
-                    else
-                    {
-                        lm.v = ComputeMod.ComputeAvgPercent(value, totalvalue[j], 2);
-                    }
-                    lm.v = CheckHideValue(des, lm.v, dy, m);
-
-                    if (lm.v != -999998) listitem.Add(lm);
-                }
-            }
-            if (ssex.IndexOf('M') != -1)
-            {
-                if (dsm.Count > 0)
-                {
-                    for (int j = 0; j < tablecount; j++)
-                    {
-                        string y = dsm[0].Rows[j]["YEAR"].ToString();
-                        string m = dsm[0].Rows[j]["MONTH"].ToString();
-                        string d = "";
-                        string de = "";
-                        if (Convert.ToInt32(y) <= Convert.ToInt32(syear))
-                        {
-                            totalvalueM.Add(0);
-                            continue;
-                        }
-                        if (eyear != "" && Convert.ToInt16(y) > Convert.ToInt16(eyear))
-                            break;
-
-                        listitem lm = new listitem();
-
-                        decimal value = 0;
-                        for (int k = 0; k < dsm.Count; k++)
-                        {
-                            value += Convert.ToDecimal(dsm[k].Rows[j]["STAT_VAL"].ToString());
-                        }
-                        lm.c = des;
-                        lm.c_e = dese;
-                        lm.l = lvl;
-
-                        string dy = (Convert.ToInt16(y) - 1911).ToString();
-                        if (m != "-")
-                        {
-                            if (infotype != "3")
-                                d = dy + "年" + m + "月";
-                            else
-                                d = dy + "年" + m;
-
-                            de = DictionaryMonth_Eng(m) + " " + y;
-                        }
-                        else
-                        {
-                            d = dy + "年";
-                            de = y;
-                        }
-
-                        lm.d = d;
-                        lm.d_e = de;
-                        lm.s = "男";
-                        lm.s_e = "Male";
-                        lm.st = "結構比 (%)";
-                        lm.st_e = "% of Total";
-                        if (des == "總計")
-                        {
-                            lm.v = ComputeMod.ComputeAvgPercent(value, value, 2);
-
-                            totalvalueM.Add(value);
-                        }
-                        else
-                        {
-                            lm.v = ComputeMod.ComputeAvgPercent(value, totalvalueM[j], 2);
-                        }
-                        lm.v = CheckHideValue(des, lm.v, dy, m);
-
-                        if (lm.v != -999998) listitem.Add(lm);
-                    }
-                }
-            }
-            if (ssex.IndexOf('F') != -1)
-            {
-                if (dsf.Count > 0)
-                {
-                    for (int j = 0; j < tablecount; j++)
-                    {
-                        string y = dsf[0].Rows[j]["YEAR"].ToString();
-                        string m = dsf[0].Rows[j]["MONTH"].ToString();
-                        string d = "";
-                        string de = "";
-                        if (Convert.ToInt32(y) <= Convert.ToInt32(syear))
-                        {
-                            totalvalueF.Add(0);
-                            continue;
-                        }
-                        if (eyear != "" && Convert.ToInt16(y) > Convert.ToInt16(eyear))
-                            break;
-
-                        listitem lm = new listitem();
-
-                        decimal value = 0;
-                        for (int k = 0; k < dsf.Count; k++)
-                        {
-                            value += Convert.ToDecimal(dsf[k].Rows[j]["STAT_VAL"].ToString());
-                        }
-                        lm.c = des;
-                        lm.c_e = dese;
-                        lm.l = lvl;
-
-                        string dy = (Convert.ToInt16(y) - 1911).ToString();
-                        if (m != "-")
-                        {
-                            if (infotype != "3")
-                                d = dy + "年" + m + "月";
-                            else
-                                d = dy + "年" + m;
-
-                            de = DictionaryMonth_Eng(m) + " " + y;
-                        }
-                        else
-                        {
-                            d = dy + "年";
-                            de = y;
-                        }
-
-                        lm.d = d;
-                        lm.d_e = de;
-                        lm.s = "女";
-                        lm.s_e = "Female";
-                        lm.st = "結構比 (%)";
-                        lm.st_e = "% of Total";
-
-                        if (des == "總計")
-                        {
-                            lm.v = ComputeMod.ComputeAvgPercent(value, value, 2);
-
-                            totalvalueF.Add(value);
-                        }
-                        else
-                        {
-                            lm.v = ComputeMod.ComputeAvgPercent(value, totalvalueF[j], 2);
-                        }
-                        lm.v = CheckHideValue(des, lm.v, dy, m);
-                        if (lm.v != -999998) listitem.Add(lm);
-                    }
+                        c = des,
+                        c_e = definition["DES_EN"].ToString(),
+                        l = definition["LVL"].ToString(),
+                        d = d,
+                        d_e = de,
+                        s = sex == "T" ? "總計" : sex == "M" ? "男" : "女",
+                        s_e = sex == "T" ? "Total" : sex == "M" ? "Male" : "Female",
+                        st = "結構比 (%)",
+                        st_e = "% of Total",
+                        v = ComputeMod.ComputeAvgPercent(numerator.Value, total.Value, 2)
+                    };
+                    item.v = CheckHideValue(des, item.v, dy, m);
+                    if (item.v != -999998)
+                        listitem.Add(item);
                 }
             }
         }
+    }
+
+    private Dictionary<string, decimal?[]> GetStructureValues(DataTable table, string classes, DataRow definition)
+    {
+        string cal = definition["CAL_ITEM"].ToString();
+        if (String.IsNullOrEmpty(cal) || cal == "NULL")
+            cal = definition["CODE"].ToString();
+        Dictionary<string, decimal?[]> values = new Dictionary<string, decimal?[]>();
+        foreach (string statCode in setMultiCodes(classes, cal.Split(',')))
+        {
+            foreach (string sex in new string[] { "M", "F" })
+            {
+                foreach (DataRow row in table.Select("STATID like '%" + sex + statCode + "%'"))
+                {
+                    string period = row["YEAR"].ToString() + "|" + row["MONTH"].ToString();
+                    decimal?[] amounts;
+                    if (!values.TryGetValue(period, out amounts))
+                    {
+                        amounts = new decimal?[2];
+                        values.Add(period, amounts);
+                    }
+                    int index = sex == "M" ? 0 : 1;
+                    amounts[index] = (amounts[index] ?? 0) + Convert.ToDecimal(row["STAT_VAL"]);
+                }
+            }
+        }
+        return values;
+    }
+
+    private int AlignIndustryPeriods(List<DataTable> male, List<DataTable> female)
+    {
+        List<DataTable> tables = male.Concat(female).ToList();
+        var periods = tables.SelectMany(table => table.AsEnumerable())
+            .Select(row => new { Year = row["YEAR"].ToString(), Month = row["MONTH"].ToString() })
+            .GroupBy(period => period.Year + "|" + period.Month)
+            .Select(group => group.First())
+            .OrderBy(period => Convert.ToInt32(period.Year))
+            .ThenBy(period => period.Month == "-" ? 0 : Convert.ToInt32(period.Month.Split('-')[0].Replace("月", "")))
+            .ToList();
+
+        // Align aggregate components by period; sparse categories must not truncate totals.
+        foreach (DataTable table in tables)
+        {
+            var existing = table.AsEnumerable().ToDictionary(
+                row => row["YEAR"].ToString() + "|" + row["MONTH"].ToString(),
+                row => row.ItemArray);
+            object[] template = table.Rows[0].ItemArray;
+            table.Clear();
+            foreach (var period in periods)
+            {
+                object[] values;
+                DataRow row = table.NewRow();
+                if (existing.TryGetValue(period.Year + "|" + period.Month, out values))
+                    row.ItemArray = values;
+                else
+                {
+                    row.ItemArray = (object[])template.Clone();
+                    row["YEAR"] = period.Year;
+                    row["MONTH"] = period.Month;
+                    row["STAT_VAL"] = 0;
+                }
+                table.Rows.Add(row);
+            }
+        }
+        return periods.Count;
     }
 
     //較上期增減率-LayOut
@@ -5142,6 +5028,8 @@ public class More_Inquire : IHttpHandler
                     tablecount = df.Length;
                 }
             }
+            if (classes == "行業" && ver == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;
@@ -5603,6 +5491,8 @@ public class More_Inquire : IHttpHandler
                     tablecount = df.Length;
                 }
             }
+            if (classes == "行業" && ver == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;

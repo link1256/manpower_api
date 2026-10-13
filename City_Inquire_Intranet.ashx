@@ -1074,6 +1074,43 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
         }
     }
 
+    private int AlignIndustryPeriods(List<DataTable> male, List<DataTable> female)
+    {
+        List<DataTable> tables = male.Concat(female).ToList();
+        var periods = tables.SelectMany(table => table.AsEnumerable())
+            .Select(row => new { Year = row["YEAR"].ToString(), Month = row["MONTH"].ToString() })
+            .GroupBy(period => period.Year + "|" + period.Month)
+            .Select(group => group.First())
+            .OrderBy(period => Convert.ToInt32(period.Year))
+            .ToList();
+
+        // Align aggregate components while preserving labels for every query cycle.
+        foreach (DataTable table in tables)
+        {
+            var existing = table.AsEnumerable().ToDictionary(
+                row => row["YEAR"].ToString() + "|" + row["MONTH"].ToString(),
+                row => row.ItemArray);
+            object[] template = table.Rows[0].ItemArray;
+            table.Clear();
+            foreach (var period in periods)
+            {
+                object[] values;
+                DataRow row = table.NewRow();
+                if (existing.TryGetValue(period.Year + "|" + period.Month, out values))
+                    row.ItemArray = values;
+                else
+                {
+                    row.ItemArray = (object[])template.Clone();
+                    row["YEAR"] = period.Year;
+                    row["MONTH"] = period.Month;
+                    row["value"] = 0;
+                }
+                table.Rows.Add(row);
+            }
+        }
+        return periods.Count;
+    }
+
     //統計值-LayOut
     public void SetLayOutStatistics1(HttpContext context, DataTable tar, string iclasses, List<listitem> listitem, string[] layouts, DataTable code, string output, string dcs, string county, Dictionary<string, decimal> data2)
     {
@@ -1089,9 +1126,9 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
         bool hasd1 = output.IndexOf("D1") != -1 ? true : false;
         bool hass = output.IndexOf("S") != -1 ? true : false;
 
-        List<decimal> totalvalue = new List<decimal>();
-        List<decimal> totalvalueM = new List<decimal>();
-        List<decimal> totalvalueF = new List<decimal>();
+        Dictionary<string, decimal> totalvalue = new Dictionary<string, decimal>();
+        Dictionary<string, decimal> totalvalueM = new Dictionary<string, decimal>();
+        Dictionary<string, decimal> totalvalueF = new Dictionary<string, decimal>();
 
         for (int i = 0; i < layouts.Length; i++)
         {
@@ -1129,6 +1166,8 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
                     tablecount = df.Length;
                 }
             }
+            if (dcs == "行業" && GetLayOutIndVer(context) == "12" && calcodes.Count > 1)
+                tablecount = AlignIndustryPeriods(dsm, dsf);
             bool hasT = false;
             if (ssex.IndexOf("T") != -1)
                 hasT = true;
@@ -1325,11 +1364,11 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
                         if (des == "總計")
                         {
                             lm.v = ComputeMod.ComputeAvgPercent(value, value, 2);
-                            totalvalue.Add(value);
+                            totalvalue[y + "|" + m] = value;
                         }
                         else
                         {
-                            lm.v = ComputeMod.ComputeAvgPercent(value, totalvalue[j], 2);
+                            lm.v = ComputeMod.ComputeAvgPercent(value, totalvalue[y + "|" + m], 2);
                         }
 
                         lm.v = CheckHideValue(des, lm.v, y, county);
@@ -1540,11 +1579,11 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
                             if (des == "總計")
                             {
                                 lm.v = ComputeMod.ComputeAvgPercent(value, value, 2);
-                                totalvalueM.Add(value);
+                                totalvalueM[y + "|" + m] = value;
                             }
                             else
                             {
-                                lm.v = ComputeMod.ComputeAvgPercent(value, totalvalueM[j], 2);
+                                lm.v = ComputeMod.ComputeAvgPercent(value, totalvalueM[y + "|" + m], 2);
                             }
                             lm.v = CheckHideValue(des, lm.v, y, county);
                             listitem.Add(lm);
@@ -1753,11 +1792,11 @@ public class City_Inquire_Intranet : IHttpHandler, IRequiresSessionState {
                             if (des == "總計")
                             {
                                 lm.v = ComputeMod.ComputeAvgPercent(value, value, 2);
-                                totalvalueF.Add(value);
+                                totalvalueF[y + "|" + m] = value;
                             }
                             else
                             {
-                                lm.v = ComputeMod.ComputeAvgPercent(value, totalvalueF[j], 2);
+                                lm.v = ComputeMod.ComputeAvgPercent(value, totalvalueF[y + "|" + m], 2);
                             }
 
                             lm.v = CheckHideValue(des, lm.v, y, county);

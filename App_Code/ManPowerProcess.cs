@@ -30,6 +30,9 @@ namespace Supergeo.StatUtils
         private List<Int32> _CountyFilter = null;
         private Int32 _BatchLimit = 1000;
         private String[] _DataRows = null;
+        private SqlConnection _ImportConnection = null;
+        private SqlTransaction _ImportTransaction = null;
+        private FinishItem _ImportResult = null;
 
         private Boolean _UserBreaking = false;
 
@@ -90,6 +93,7 @@ namespace Supergeo.StatUtils
             Boolean bRc = false;
             try
             {
+                Int32 metadataCount = 0;
                 _Metadata = new Metadata();
                 using (SqlConnection conn = new SqlConnection(_ConnectionString))
                 {
@@ -110,6 +114,7 @@ namespace Supergeo.StatUtils
                             Int32 nDescFull = dr.GetOrdinal("DES_FULL");
                             while ((dr.Read()))
                             {
+                                metadataCount++;
                                 String strCardNum = (dr[nCardNum] as String).Trim();
                                 String strColNum = (dr[nColNum] as String).Trim();
                                 String strStatID = (dr[nStatID] as String).Trim();
@@ -127,6 +132,8 @@ namespace Supergeo.StatUtils
                         }
                     }
                     conn.Close();
+                    if (metadataCount == 0)
+                        throw new InvalidOperationException("No import mappings were found.");
                     _MetadataTable = strTableMetadata;
                     _MetadataSource = strTableSource;
                     if (Message != null)
@@ -434,6 +441,70 @@ namespace Supergeo.StatUtils
 
         public Int32 ImportData()
         {
+            return ImportData(null, null);
+        }
+
+        public Int32 ImportData(DateTime? replaceStart, DateTime? replaceEnd)
+        {
+            if (_DataRows == null || _DataRows.Length == 0 || _MetadataTable == null
+                || _DataValueTable == null || _Layout == null)
+                throw new InvalidOperationException("Import data and mappings must be loaded first.");
+            if (replaceStart.HasValue != replaceEnd.HasValue
+                || (replaceStart.HasValue && replaceStart.Value > replaceEnd.Value))
+                throw new ArgumentException("Invalid replacement period.");
+
+            _ImportResult = null;
+            Int32 imported = 0;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(_ConnectionString))
+                {
+                    connection.Open();
+                    using (SqlTransaction transaction = connection.BeginTransaction())
+                    {
+                        _ImportConnection = connection;
+                        _ImportTransaction = transaction;
+                        try
+                        {
+                            if (replaceStart.HasValue)
+                            {
+                                using (SqlCommand command = connection.CreateCommand())
+                                {
+                                    command.Transaction = transaction;
+                                    command.CommandTimeout = 300;
+                                    command.CommandText = "DELETE FROM [" + _DataValueTable.Replace("]", "]]")
+                                        + "] WHERE (CAST(YEAR AS int) * 100 + CAST(MONTH AS int)) BETWEEN @Start AND @End";
+                                    command.Parameters.AddWithValue("@Start", replaceStart.Value.Year * 100 + replaceStart.Value.Month);
+                                    command.Parameters.AddWithValue("@End", replaceEnd.Value.Year * 100 + replaceEnd.Value.Month);
+                                    command.ExecuteNonQuery();
+                                }
+                            }
+                            imported = ImportDataCore();
+                            if (_UserBreaking || imported <= 0)
+                                throw new InvalidOperationException("Import was interrupted or produced no records.");
+                            transaction.Commit();
+                        }
+                        finally
+                        {
+                            _ImportConnection = null;
+                            _ImportTransaction = null;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                if (Finished != null)
+                    Finished.Invoke(new FinishItem() { UniqueID = _UniqueID, UserBreak = 1 });
+                throw;
+            }
+            if (_ImportResult != null && Finished != null)
+                Finished.Invoke(_ImportResult);
+            return imported;
+        }
+
+        private Int32 ImportDataCore()
+        {
             Int32 nRc = 0;
             if (_DataRows != null && _DataRows.Length > 0)
             {
@@ -555,6 +626,9 @@ namespace Supergeo.StatUtils
                                                 lstSQL.Add(data.GetInsertSQL(nV));
                                                 nBatchCount++;
                                             }
+                                            else
+                                                throw new FormatException("Invalid value at line " + (i + 1)
+                                                    + ", card " + strCard + ", column " + item.Value + ".");
                                         }
                                     }
                                 }
@@ -607,8 +681,7 @@ namespace Supergeo.StatUtils
                             Progress.Invoke(new ProgressItem(_UniqueID, _DataRows.Length, _DataRows.Length, nRc));
                     }
                 }
-                if (Finished != null)
-                    Finished.Invoke(new FinishItem(_UniqueID, _UserBreaking ? 1 : 0, _MetadataSource, nTotalLines, nRc, dtStart.Year, dtStart.Month, dtEnd.Year, dtEnd.Month));
+                _ImportResult = new FinishItem(_UniqueID, _UserBreaking ? 1 : 0, _MetadataSource, nTotalLines, nRc, dtStart.Year, dtStart.Month, dtEnd.Year, dtEnd.Month);
             }
             return nRc;
         }
@@ -699,59 +772,32 @@ namespace Supergeo.StatUtils
         private Int32 InsertStatData(String strTable, List<Object> lstSQL)
         {
             Int32 nRc = 0;
-
-            using (SqlConnection conn = new SqlConnection(_ConnectionString))
+            if (_ImportConnection == null || _ImportTransaction == null)
+                throw new InvalidOperationException("An import transaction is required.");
+            using (SqlCommand cmd = _ImportConnection.CreateCommand())
             {
-                if (conn.State != ConnectionState.Open)
+                cmd.CommandTimeout = 300;
+                cmd.CommandType = CommandType.Text;
+                cmd.Transaction = _ImportTransaction;
+                foreach (Object obj in lstSQL)
                 {
-                    conn.Open();
-                }
-                using (SqlCommand cmd = conn.CreateCommand())
-                {
-                    cmd.CommandTimeout = 300;
-                    cmd.CommandType = CommandType.Text;
-
-                    using (var transaction = conn.BeginTransaction("InsertStatData"))
+                    cmd.Parameters.Clear();
+                    Dictionary<String, Object> param = obj as Dictionary<String, Object>;
+                    if (param != null)
                     {
-                        try
+                        List<String> lstColumns = new List<String>();
+                        List<String> lstParams = new List<String>();
+                        foreach (String key in param.Keys)
                         {
-                            cmd.Transaction = transaction;
-                            foreach (Object obj in lstSQL)
-                            {
-                                cmd.Parameters.Clear();
-                                Dictionary<String, Object> param = obj as Dictionary<String, Object>;
-                                if (param != null)
-                                {
-                                    List<String> lstColumns = new List<String>();
-                                    List<String> lstParams = new List<String>();
-                                    foreach (String key in param.Keys)
-                                    {
-                                        // 組合 SqlParameter 的參數
-                                        string hekey = key;
-                                        lstColumns.Add(hekey);
-                                        lstParams.Add("@" + hekey);
-                                        cmd.Parameters.Add(new SqlParameter("@" + hekey, param[key]));
-                                    }
-                                    string col = String.Join(",", lstColumns);
-                                    string par = String.Join(",", lstParams);
-                                    String strSQL = $"INSERT INTO [{strTable}] ({col}) VALUES ({par});";
-
-                                    cmd.CommandText = strSQL;
-                                    nRc += cmd.ExecuteNonQuery();
-                                }
-                            }
-                            transaction.Commit();
+                            lstColumns.Add(key);
+                            lstParams.Add("@" + key);
+                            cmd.Parameters.Add(new SqlParameter("@" + key, param[key]));
                         }
-                        catch (Exception ex)
-                        {
-                            transaction.Rollback();
-                            nRc = 0;
-                            if (Message != null)
-                                WriteLog(String.Format("錯誤:\r\n{0}\r\n", ex.Message));
-                        }
+                        cmd.CommandText = "INSERT INTO [" + strTable.Replace("]", "]]") + "] ("
+                            + String.Join(",", lstColumns) + ") VALUES (" + String.Join(",", lstParams) + ");";
+                        nRc += cmd.ExecuteNonQuery();
                     }
                 }
-                conn.Close();
             }
             return nRc;
         }
